@@ -72,8 +72,12 @@
   let sorted = false;
   let sortStartedAt = 0;
   let toastTimer;
+  let soundEnabled = true;
+  let audioContext = null;
+  let lastSoundAt = 0;
   const sizeInput = $('#size-slider');
   const speedInput = $('#speed-slider');
+  const volumeInput = $('#sound-volume');
 
   function seededArray(length, shuffled = true) {
     const arr = Array.from({ length }, (_, i) => i + 1);
@@ -118,6 +122,43 @@
       ctx.stroke();
     }
   }
+  function getAudioContext() {
+    if(!soundEnabled) return null;
+    const AudioCtor=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtor) return null;
+    if(!audioContext) audioContext=new AudioCtor();
+    if(audioContext.state==='suspended') audioContext.resume().catch(()=>{});
+    return audioContext;
+  }
+  function playSortSound(item) {
+    const audio=getAudioContext(), volume=Number(volumeInput.value)/100;
+    if(!audio||volume<=0) return;
+    const now=performance.now(), minInterval=Number(speedInput.value)>75?32:48;
+    if(now-lastSoundAt<minInterval) return;
+    lastSoundAt=now;
+    const indices=item?.indices||[], value=data[indices[0]]||1, max=Math.max(...data,1);
+    const frequency=210+(value/max)*640;
+    const oscillator=audio.createOscillator(), gain=audio.createGain();
+    oscillator.type=item?.type==='compare'?'sine':'triangle';
+    oscillator.frequency.setValueAtTime(frequency,audio.currentTime);
+    gain.gain.setValueAtTime(volume*(item && item.type==='compare'?0.34:0.55),audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.045);
+    oscillator.connect(gain);gain.connect(audio.destination);oscillator.start();oscillator.stop(audio.currentTime+.05);
+  }
+  function playFinishSound() {
+    const audio=getAudioContext(), volume=Number(volumeInput.value)/100;
+    if(!audio||volume<=0) return;
+    [523.25,659.25,783.99].forEach((frequency,index)=>{
+      const start=audio.currentTime+index*.095, oscillator=audio.createOscillator(), gain=audio.createGain();
+      oscillator.type='sine';oscillator.frequency.setValueAtTime(frequency,start);gain.gain.setValueAtTime(volume*.45,start);gain.gain.exponentialRampToValueAtTime(.001,start+.16);
+      oscillator.connect(gain);gain.connect(audio.destination);oscillator.start(start);oscillator.stop(start+.17);
+    });
+  }
+  function updateSoundButton() {
+    $('#sound-toggle').classList.toggle('active',soundEnabled);
+    $('#sound-toggle').setAttribute('aria-pressed',String(soundEnabled));
+    $('#sound-label').textContent=soundEnabled?'Звук вкл.':'Звук выкл.';
+  }
   function updateUI() {
     $('#array-size-readout').textContent = data.length;
     $('#size-readout').textContent = data.length;
@@ -156,15 +197,15 @@
     paused = false;
     iterator = null;
   }
-  const event = (indices) => ({ indices });
+  const event = (indices, type = 'compare') => ({ indices, type });
   function* swap(a, i, j) {
-    yield event([i, j]);
+    yield event([i, j], 'compare');
     [a[i], a[j]] = [a[j], a[i]];
-    yield event([i, j]);
+    yield event([i, j], 'swap');
   }
   function* write(a, i, value, highlight = [i]) {
     a[i] = value;
-    yield event(highlight);
+    yield event(highlight, 'write');
   }
   function* compare(a, i, j) { yield event([i, j]); return a[i] - a[j]; }
 
@@ -440,7 +481,7 @@
   }
   function finishSort() {
     sorting = false; paused = false; sorted = selected.custom || data.every((v, i) => i === 0 || data[i - 1] <= v); active = [];
-    if (!sorted) toast('Алгоритм завершился, но массив ещё не упорядочен.');
+    if (sorted) playFinishSound(); else toast('Алгоритм завершился, но массив ещё не упорядочен.');
     updateUI();
   }
   function consumeOne() {
@@ -448,6 +489,7 @@
     const next = iterator.next();
     if (next.done) { finishSort(); return false; }
     active = next.value?.indices || [];
+    playSortSound(next.value);
     operations++;
     return true;
   }
@@ -461,11 +503,13 @@
   }
   function toggleSort() {
     if (sorting) { paused = !paused; updateUI(); if (!paused) requestAnimationFrame(animate); return; }
+    getAudioContext();
     if (drawMode) { drawMode = false; creationType=null; animationFrames=[]; frameTouched=false; }
     if (sorted) resetArray(true);
     sorted = false; operations = 0; active = []; iterator = makeSorter(); sorting = true; paused = false; sortStartedAt = performance.now(); updateUI(); requestAnimationFrame(animate);
   }
   function stepOnce() {
+    getAudioContext();
     if (!sorting) { sorted = false; operations = 0; iterator = makeSorter(); sorting = true; paused = true; }
     paused = true; consumeOne(); updateUI();
   }
@@ -557,6 +601,11 @@
     const val = Number(speedInput.value);
     $('#speed-readout').textContent = val < 25 ? 'Медленная' : val < 70 ? 'Средняя' : 'Быстрая';
   });
+  $('#sound-toggle').addEventListener('click', () => {
+    soundEnabled=!soundEnabled; updateSoundButton();
+    if(soundEnabled) getAudioContext(); else if(audioContext?.state==='running') audioContext.suspend();
+  });
+  volumeInput.addEventListener('input', () => { volumeInput.setAttribute('aria-valuenow',volumeInput.value); });
   $('#draw-array-button').addEventListener('click', () => startCreation('array'));
   $('#create-animation-button').addEventListener('click', () => startCreation('animation'));
   $('#next-frame-button').addEventListener('click', nextAnimationFrame);
@@ -599,5 +648,5 @@
   dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
 
   data = seededArray(Number(sizeInput.value));
-  renderSavedArrays(); renderCategories(); renderList(); updateUI(); fitCanvas();
+  updateSoundButton(); renderSavedArrays(); renderCategories(); renderList(); updateUI(); fitCanvas();
 })();
