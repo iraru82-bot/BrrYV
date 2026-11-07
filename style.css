@@ -14,3 +14,5 @@
 @media(max-width:1050px){.tool-button{padding:0 7px}.tool-button span{font-size:8px}.viz-actions{gap:4px}}
 @media(max-width:780px){.viz-actions{flex-wrap:wrap;justify-content:flex-end}.tool-button{height:29px}.builder-form{grid-template-columns:1fr 1fr}.builder-form label:first-child{grid-column:span 2}.saved-array-row{flex-wrap:wrap}.saved-array-row label{width:100%}}
 @media(max-width:520px){.viz-toolbar{align-items:flex-start;gap:10px}.viz-actions{max-width:58%;flex-wrap:wrap}.tool-button{font-size:8px;height:28px}.tool-button span{font-size:7px}.draw-hint{top:8px;font-size:8px}.saved-array-row button{font-size:8px;padding:7px}.saved-array-row select{font-size:9px}}
+
+#canvas-empty{display:none!important}
