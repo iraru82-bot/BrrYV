@@ -35,12 +35,15 @@
           <div class="viz-toolbar">
             <div class="selected-algorithm"><span class="selected-label">ТЕКУЩИЙ АЛГОРИТМ</span><strong id="current-algorithm">Быстрая сортировка · median pivot</strong></div>
             <div class="viz-actions">
+              <button class="tool-button" id="draw-array-button" type="button">✎ <span>Нарисовать массив</span></button>
+              <button class="tool-button create-tool" id="create-animation-button" type="button">＋ <span>Своя анимация</span></button>
               <button class="icon-button" id="shuffle-button" type="button" title="Перемешать массив" aria-label="Перемешать массив"><svg viewBox="0 0 20 20"><path d="M15 3h3v3M18 3l-5 5M2 6h2.5c3.2 0 4.1 8 7.3 8H13M15 11h3v3M18 11l-5 5M2 14h2.5c1 0 1.8-.9 2.5-2"/></svg></button>
               <button class="icon-button" id="reset-button" type="button" title="Сбросить массив" aria-label="Сбросить массив"><svg viewBox="0 0 20 20"><path d="M3.5 7.5A7 7 0 1 1 3 11M3 3v4.5h4.5"/></svg></button>
             </div>
           </div>
           <div class="canvas-wrap" id="canvas-wrap">
             <canvas id="sort-canvas" aria-label="Анимация массива в виде вертикальных линий"></canvas>
+            <div class="draw-hint" id="draw-hint" hidden>Проведи по полю, чтобы нарисовать значения <button id="finish-drawing-button" type="button">Готово</button></div>
             <div class="canvas-empty" id="canvas-empty" hidden><span>✓</span> Массив отсортирован</div>
             <div class="canvas-corner top-left"></div><div class="canvas-corner top-right"></div><div class="canvas-corner bottom-left"></div><div class="canvas-corner bottom-right"></div>
           </div>
@@ -58,6 +61,7 @@
           <div class="slider-control speed-control"><div class="slider-title"><label for="speed-slider">СКОРОСТЬ</label><strong id="speed-readout">Средняя</strong></div><input id="speed-slider" type="range" min="1" max="100" value="52" /></div>
           <div class="slider-control size-control"><div class="slider-title"><label for="size-slider">РАЗМЕР МАССИВА</label><strong id="size-readout">150</strong></div><input id="size-slider" type="range" min="20" max="220" value="150" /></div>
         </div>
+        <div class="saved-array-row"><label for="saved-arrays-select">МОИ МАССИВЫ</label><select id="saved-arrays-select"><option value="">Выбери сохранённый массив</option></select><button id="save-array-button" type="button">Сохранить текущий</button></div>
         <div class="bottom-note"><span class="keyboard-hint"><kbd>ПРОБЕЛ</kbd> запуск / пауза</span><span>СДЕЛАНО ДЛЯ ЛЮБОПЫТНЫХ <span class="heart">✳</span></span></div>
       </section>
 
@@ -66,12 +70,16 @@
         <div class="search-wrap"><svg viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search-input" type="search" placeholder="Найти алгоритм..." autocomplete="off"><kbd>/</kbd></div>
         <div class="category-strip" id="category-strip" aria-label="Фильтр по категории"></div>
         <div class="algorithm-list" id="algorithm-list" role="listbox" aria-label="Список сортировок"></div>
-        <div class="sidebar-foot"><span class="legend-small"></span><span><strong>350</strong> вариантов сортировок</span><span class="sidebar-foot-right">14 семейств</span></div>
+        <div class="sidebar-foot"><span class="legend-small"></span><span><strong>350</strong> сортировок</span><span class="sidebar-foot-right">35 разных алгоритмов</span></div>
       </aside>
     </main>
     <div class="toast" id="toast" role="status"></div>
   </div>
-  <dialog id="about-dialog" class="about-dialog"><button class="dialog-close" id="dialog-close" aria-label="Закрыть">×</button><div class="eyebrow"><span class="eyebrow-line"></span> ARRAY LAB</div><h2>Смотри, как<br><em>работают идеи.</em></h2><p>Небольшая интерактивная лаборатория сортировок. Выбирай алгоритм, меняй размер массива и скорость, а затем наблюдай за каждым сравнением и перемещением.</p><div class="dialog-stats"><div><strong>350</strong><span>вариантов</span></div><div><strong>14</strong><span>семейств</span></div><div><strong>∞</strong><span>любопытства</span></div></div></dialog>
+  <dialog id="about-dialog" class="about-dialog"><button class="dialog-close" id="dialog-close" aria-label="Закрыть">×</button><div class="eyebrow"><span class="eyebrow-line"></span> ARRAY LAB</div><h2>Смотри, как<br><em>работают идеи.</em></h2><p>Небольшая интерактивная лаборатория сортировок. Выбирай алгоритм, меняй размер массива и скорость, а затем наблюдай за каждым сравнением и перемещением.</p><div class="dialog-stats"><div><strong>350</strong><span>вариантов</span></div><div><strong>35</strong><span>алгоритмов</span></div><div><strong>∞</strong><span>любопытства</span></div></div></dialog>
+  <dialog id="builder-dialog" class="about-dialog builder-dialog"><button class="dialog-close" id="builder-close" aria-label="Закрыть">×</button><div class="eyebrow"><span class="eyebrow-line"></span> КОНСТРУКТОР</div><h2>Создай свою<br><em>анимацию.</em></h2><p>Собери последовательность действий: выбери индексы элементов, которые нужно сравнить или поменять местами. Анимация появится в твоём каталоге.</p><label class="builder-label" for="animation-name">Название сортировки</label><input id="animation-name" class="builder-input" maxlength="36" value="Моя сортировка" />
+    <div class="builder-form"><label>Действие<select id="builder-action"><option value="compare">Сравнить</option><option value="swap">Поменять местами</option></select></label><label>Индекс A<input id="builder-index-a" type="number" min="1" value="1"></label><label>Индекс B<input id="builder-index-b" type="number" min="1" value="2"></label><button id="add-builder-step" class="primary-button" type="button">Добавить шаг</button></div>
+    <div class="builder-step-head"><strong>ШАГИ АНИМАЦИИ</strong><button id="clear-builder-steps" type="button">Очистить</button></div><ol id="builder-steps" class="builder-steps"></ol><div class="builder-footer"><span id="builder-step-count">0 шагов</span><button id="save-animation-button" class="primary-button" type="button">Сохранить анимацию</button></div>
+  </dialog>
   <script src="app.js"></script>
 </body>
 </html>
