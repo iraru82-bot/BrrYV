@@ -54,7 +54,9 @@
   })));
   let customSorts = JSON.parse(localStorage.getItem('arraylab-sorts') || '[]').map((item, i) => ({...item, id:`custom-${i}`, category:'Мои', custom:true, search:`${item.title} ${item.label}`.toLowerCase()}));
   let savedArrays = JSON.parse(localStorage.getItem('arraylab-arrays') || '[]');
-  let customSteps = [];
+  let animationFrames = [];
+  let creationType = null;
+  let frameTouched = false;
   let drawMode = false;
   let drawingPointer = false;
   const selectedQuick = algorithms.findIndex(a => a.runner === 'quickMedian');
@@ -125,10 +127,15 @@
     $('#play-label').textContent = sorting ? (paused ? 'Продолжить' : 'Пауза') : 'Запустить';
     $('#run-status').classList.toggle('running', sorting && !paused);
     $('#run-status').classList.toggle('done', sorted);
-    $('#status-label').textContent = sorting ? (paused ? 'ПАУЗА' : 'ВЫПОЛНЯЕТСЯ') : sorted ? 'АНИМАЦИЯ ЗАВЕРШЕНА' : drawMode ? 'РИСОВАНИЕ МАССИВА' : 'ГОТОВО К ЗАПУСКУ';
+    $('#status-label').textContent = sorting ? (paused ? 'ПАУЗА' : 'ВЫПОЛНЯЕТСЯ') : sorted ? 'АНИМАЦИЯ ЗАВЕРШЕНА' : drawMode ? (creationType === 'animation' ? 'ЗАПИСЬ КАДРОВ' : 'РИСОВАНИЕ МАССИВА') : 'ГОТОВО К ЗАПУСКУ';
     $('#draw-hint').hidden = !drawMode;
-    $('#draw-array-button').classList.toggle('active', drawMode);
-    $('#draw-array-button').innerHTML = drawMode ? '✎ <span>Рисование включено</span>' : '✎ <span>Нарисовать массив</span>';
+    $('#draw-hint-text').textContent = creationType === 'animation' ? `Кадр ${animationFrames.length + 1}: нарисуй состояние массива` : 'Проведи по полю, чтобы нарисовать массив';
+    $('#next-frame-button').hidden = creationType !== 'animation';
+    $('#finish-drawing-button').textContent = creationType === 'animation' ? 'Завершить' : 'Готово';
+    $('#draw-array-button').classList.toggle('active', drawMode && creationType === 'array');
+    $('#draw-array-button').innerHTML = drawMode && creationType === 'array' ? '✎ <span>Рисование включено</span>' : '✎ <span>Нарисовать массив</span>';
+    $('#create-animation-button').classList.toggle('active', drawMode && creationType === 'animation');
+    $('#create-animation-button').innerHTML = drawMode && creationType === 'animation' ? '● <span>Запись анимации</span>' : '＋ <span>Своя анимация</span>';
     $('#canvas-wrap').classList.toggle('drawing', drawMode);
     const count = algorithms.length + customSorts.length;
     $('#algorithm-count').textContent = count;
@@ -137,7 +144,7 @@
     render();
   }
   function resetArray(shuffle = true) {
-    stopSort(); drawMode = false;
+    stopSort(); drawMode = false; creationType=null; animationFrames=[]; frameTouched=false;
     data = seededArray(Number(sizeInput.value), shuffle);
     operations = 0;
     active = [];
@@ -418,13 +425,17 @@
     heap:(a,v)=>heap(a,v), mergeBottom:(a)=>mergeSort(a), mergeTop:(a)=>mergeTopDown(a), naturalMerge:(a)=>naturalMergeSort(a), cycle:(a)=>cycle(a), counting:(a)=>counting(a), pigeonhole:(a)=>pigeonholeSort(a),
     radix2:(a,v)=>radix(a,v,2), radix10:(a,v)=>radix(a,v,10), radix16:(a,v)=>radix(a,v,16), bucket:(a,v)=>bucketSort(a,v), pancake:(a)=>pancake(a), tree:(a)=>treeSort(a), patience:(a)=>patienceSort(a), strand:(a)=>strandSort(a), tournament:(a)=>tournamentSort(a), timsort:(a,v)=>timSort(a,v)
   };
-  function* customAnimation(a, steps) {
-    for (const step of steps) { const i = Math.max(0, Math.min(a.length - 1, step.a)); const j = Math.max(0, Math.min(a.length - 1, step.b));
-      if (step.action === 'swap') yield* swap(a, i, j); else { yield event([i,j]); }
+  function* customAnimation(a, animation) {
+    if (animation.frames?.length) {
+      for (const frame of animation.frames) for (let i=0;i<Math.min(a.length,frame.length);i++) if(a[i]!==frame[i]) yield*write(a,i,frame[i],[i]);
+      return;
+    }
+    for (const step of animation.steps || []) { const i = Math.max(0, Math.min(a.length - 1, step.a)); const j = Math.max(0, Math.min(a.length - 1, step.b));
+      if (step.action === 'swap') yield* swap(a, i, j); else yield event([i,j]);
     }
   }
   function makeSorter() {
-    if (selected.custom) return customAnimation(data, selected.steps || []);
+    if (selected.custom) return customAnimation(data, selected);
     return runnerMap[selected.runner](data, selected.variantIndex, selected);
   }
   function finishSort() {
@@ -450,7 +461,7 @@
   }
   function toggleSort() {
     if (sorting) { paused = !paused; updateUI(); if (!paused) requestAnimationFrame(animate); return; }
-    if (drawMode) drawMode = false;
+    if (drawMode) { drawMode = false; creationType=null; animationFrames=[]; frameTouched=false; }
     if (sorted) resetArray(true);
     sorted = false; operations = 0; active = []; iterator = makeSorter(); sorting = true; paused = false; sortStartedAt = performance.now(); updateUI(); requestAnimationFrame(animate);
   }
@@ -475,11 +486,9 @@
     select.replaceChildren(new Option('Выбери сохранённый массив', ''));
     savedArrays.forEach((item, i) => select.add(new Option(item.name, String(i))));
   }
-  function setDrawMode(enabled) {
-    drawMode = enabled;
-    if (enabled) { stopSort(); data = new Array(Number(sizeInput.value)).fill(1); operations = 0; active = []; sorted = false; }
-    else active = [];
-    updateUI();
+  function startCreation(type) {
+    stopSort(); creationType=type; drawMode=true; animationFrames=[]; frameTouched=false; data=new Array(Number(sizeInput.value)).fill(1);
+    operations=0; active=[]; sorted=false; updateUI();
   }
   function paintArray(event) {
     if (!drawMode || !data.length) return;
@@ -488,13 +497,48 @@
     const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
     const index = Math.min(data.length - 1, Math.floor(x / rect.width * data.length));
     data[index] = Math.max(1, Math.round((1 - y / rect.height) * 1000));
-    active = [index]; sorted = false; render();
+    frameTouched=true; active = [index]; sorted = false; render();
   }
-  function renderBuilderSteps() {
-    const list = $('#builder-steps');
-    list.innerHTML = customSteps.map((step, i) => `<li><span>${step.action === 'swap' ? 'Поменять местами' : 'Сравнить'} <b>${step.a + 1}</b> и <b>${step.b + 1}</b></span><button type="button" data-step="${i}" aria-label="Удалить шаг">×</button></li>`).join('') || '<li class="empty-step">Пока нет шагов — добавь первое действие.</li>';
-    $('#builder-step-count').textContent = `${customSteps.length} ${customSteps.length === 1 ? 'шаг' : customSteps.length > 1 && customSteps.length < 5 ? 'шага' : 'шагов'}`;
+  function showDialog(dialog) { if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open',''); }
+  function nextAnimationFrame() {
+    if(creationType!=='animation') return;
+    if(!frameTouched){toast('Нарисуй этот кадр, прежде чем переходить дальше.');return;}
+    animationFrames.push([...data]); data=[...data]; frameTouched=false; active=[]; updateUI();
+    toast(`Кадр ${animationFrames.length} записан. Рисуй следующий.`);
   }
+  function finishCreation() {
+    if(creationType==='array'){ if(!frameTouched){toast('Сначала нарисуй значения на графике.');return;} $('#array-save-name').value=`Массив ${savedArrays.length+1}`; showDialog($('#array-choice-dialog')); return; }
+    if(creationType==='animation'){
+      if(animationFrames.length<1){toast('Сначала зафиксируй кадр 1 кнопкой «Зафиксировать кадр».');return;}
+      if(!frameTouched){toast('Нарисуй второй кадр, затем заверши анимацию.');return;}
+      animationFrames.push([...data]);
+      $('#animation-frame-total').textContent=`${animationFrames.length} кадра`;
+      $('#animation-save-name').value=`Моя анимация ${customSorts.length+1}`;
+      data=[...animationFrames[0]]; active=[]; drawMode=false; creationType=null; updateUI(); showDialog($('#animation-choice-dialog'));
+    }
+  }
+  function endCreation({cancel=false}={}) { drawMode=false; creationType=null; animationFrames=[]; frameTouched=false; active=[]; if(cancel) resetArray(true); else updateUI(); }
+  function persistArray() {
+    const name=$('#array-save-name').value.trim()||`Массив ${savedArrays.length+1}`;
+    savedArrays.push({name:name.slice(0,32),values:[...data]}); localStorage.setItem('arraylab-arrays',JSON.stringify(savedArrays)); renderSavedArrays();
+    $('#array-choice-dialog').close(); endCreation(); toast('Массив сохранён.');
+  }
+  function prepareAnimationRecord() {
+    const title=$('#animation-save-name').value.trim()||`Моя анимация ${customSorts.length+1}`;
+    return {title:title.slice(0,36),variant:`Покадровая анимация · ${animationFrames.length} кадров`,label:`${title} · ${animationFrames.length} кадров`,frames:animationFrames.map(frame=>[...frame])};
+  }
+  function activateAnimation(record,save) {
+    const item={...record,id:save?`custom-${customSorts.length}`:`temporary-${Date.now()}`,category:save?'Мои':'Временная',custom:true,search:`${record.title} ${record.label}`.toLowerCase()};
+    if(save){customSorts.push(item);localStorage.setItem('arraylab-sorts',JSON.stringify(customSorts.map(({id,category,custom,search,...entry})=>entry)));chosenCategory='Мои';renderCategories();renderList();}
+    selected=item; data=[...record.frames[0]]; sorted=false; operations=0; active=[];
+    $('#animation-choice-dialog').close(); animationFrames=[]; updateUI();
+    toast(save?'Анимация сохранена в каталоге «Мои».':'Анимация запущена без сохранения.');
+    if(!save) toggleSort();
+  }
+  function resumeArrayDrawing(){ $('#array-choice-dialog').close(); drawMode=true; creationType='array'; frameTouched=false; updateUI(); }
+  function resumeAnimationDrawing(){ $('#animation-choice-dialog').close(); data=[...animationFrames[animationFrames.length-1]]; animationFrames.pop(); drawMode=true; creationType='animation'; frameTouched=false; updateUI(); }
+  function cancelAnimationDrawing(){ $('#animation-choice-dialog').close(); endCreation({cancel:true}); }
+  function cancelArrayDrawing(){ $('#array-choice-dialog').close(); endCreation({cancel:true}); }
   $('#algorithm-list').addEventListener('click', (e) => {
     const item = e.target.closest('.algorithm-item'); if (!item) return;
     selected = [...algorithms, ...customSorts].find(a => String(a.id) === item.dataset.id); resetArray(true); renderList();
@@ -513,8 +557,11 @@
     const val = Number(speedInput.value);
     $('#speed-readout').textContent = val < 25 ? 'Медленная' : val < 70 ? 'Средняя' : 'Быстрая';
   });
-  $('#draw-array-button').addEventListener('click', () => setDrawMode(!drawMode));
-  $('#finish-drawing-button').addEventListener('click', () => { setDrawMode(false); toast('Массив готов. Сохрани его или запусти сортировку.'); });
+  $('#draw-array-button').addEventListener('click', () => startCreation('array'));
+  $('#create-animation-button').addEventListener('click', () => startCreation('animation'));
+  $('#next-frame-button').addEventListener('click', nextAnimationFrame);
+  $('#finish-drawing-button').addEventListener('click', finishCreation);
+  $('#cancel-drawing-button').addEventListener('click', () => endCreation({cancel:true}));
   canvas.addEventListener('pointerdown', (e) => { if (!drawMode) return; drawingPointer = true; canvas.setPointerCapture(e.pointerId); paintArray(e); });
   canvas.addEventListener('pointermove', (e) => { if (drawingPointer && drawMode) paintArray(e); });
   canvas.addEventListener('pointerup', () => { drawingPointer = false; active = []; render(); });
@@ -531,27 +578,15 @@
     stopSort(); drawMode = false; data = [...item.values]; sizeInput.value = Math.max(20,Math.min(220,data.length));
     operations = 0; active = []; sorted = false; updateUI();
   });
-  const builderDialog = $('#builder-dialog');
-  $('#create-animation-button').addEventListener('click', () => { customSteps = []; renderBuilderSteps(); $('#animation-name').value = 'Моя сортировка'; $('#builder-index-a').max = data.length; $('#builder-index-b').max = data.length; builderDialog.showModal(); });
-  $('#builder-close').addEventListener('click', () => builderDialog.close());
-  $('#add-builder-step').addEventListener('click', () => {
-    const a = Number($('#builder-index-a').value), b = Number($('#builder-index-b').value);
-    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < 1 || a > data.length || b > data.length) { toast(`Индексы должны быть от 1 до ${data.length}.`); return; }
-    if ($('#builder-action').value === 'swap' && a === b) { toast('Для обмена нужны два разных индекса.'); return; }
-    customSteps.push({action:$('#builder-action').value, a:a-1, b:b-1}); renderBuilderSteps();
-  });
-  $('#clear-builder-steps').addEventListener('click', () => { customSteps = []; renderBuilderSteps(); });
-  $('#builder-steps').addEventListener('click', (e) => { const button=e.target.closest('[data-step]'); if (!button) return; customSteps.splice(Number(button.dataset.step),1); renderBuilderSteps(); });
-  $('#save-animation-button').addEventListener('click', () => {
-    const title = $('#animation-name').value.trim() || 'Моя сортировка';
-    if (!customSteps.length) { toast('Добавь хотя бы один шаг анимации.'); return; }
-    const saved = {title:title.slice(0,36), variant:`Своя анимация · ${customSteps.length} шагов`, label:`${title} · своя анимация`, steps:customSteps.map(step=>({...step}))};
-    customSorts.push({...saved, id:`custom-${customSorts.length}`, category:'Мои', custom:true, search:`${saved.title} ${saved.label}`.toLowerCase()});
-    localStorage.setItem('arraylab-sorts', JSON.stringify(customSorts.map(({id,category,custom,search,...item})=>item)));
-    selected = customSorts[customSorts.length-1]; chosenCategory='Мои'; stopSort(); sorted=false;
-    builderDialog.close(); resetArray(true); renderCategories(); renderList(); toast('Анимация добавлена в категорию «Мои».');
-  });
-  builderDialog.addEventListener('click', (e) => { if (e.target === builderDialog) builderDialog.close(); });
+  const arrayChoiceDialog=$('#array-choice-dialog'), animationChoiceDialog=$('#animation-choice-dialog');
+  $('#save-created-array').addEventListener('click',persistArray);
+  $('#use-array-once').addEventListener('click',()=>{arrayChoiceDialog.close();endCreation();toast('Массив готов к сортировке.');});
+  $('#edit-created-array').addEventListener('click',resumeArrayDrawing);
+  $('#save-created-animation').addEventListener('click',()=>activateAnimation(prepareAnimationRecord(),true));
+  $('#use-animation-once').addEventListener('click',()=>activateAnimation(prepareAnimationRecord(),false));
+  $('#edit-created-animation').addEventListener('click',resumeAnimationDrawing);
+  arrayChoiceDialog.addEventListener('cancel',(e)=>{e.preventDefault();resumeArrayDrawing();});
+  animationChoiceDialog.addEventListener('cancel',(e)=>{e.preventDefault();resumeAnimationDrawing();});
   window.addEventListener('resize', fitCanvas);
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input')) return;
