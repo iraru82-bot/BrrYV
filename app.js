@@ -126,8 +126,6 @@
     $('#run-status').classList.toggle('running', sorting && !paused);
     $('#run-status').classList.toggle('done', sorted);
     $('#status-label').textContent = sorting ? (paused ? 'ПАУЗА' : 'ВЫПОЛНЯЕТСЯ') : sorted ? 'АНИМАЦИЯ ЗАВЕРШЕНА' : drawMode ? 'РИСОВАНИЕ МАССИВА' : 'ГОТОВО К ЗАПУСКУ';
-    $('#canvas-empty').hidden = !sorted;
-    $('#canvas-empty').innerHTML = selected.custom ? '<span>✓</span> Анимация завершена' : '<span>✓</span> Массив отсортирован';
     $('#draw-hint').hidden = !drawMode;
     $('#draw-array-button').classList.toggle('active', drawMode);
     $('#draw-array-button').innerHTML = drawMode ? '✎ <span>Рисование включено</span>' : '✎ <span>Нарисовать массив</span>';
